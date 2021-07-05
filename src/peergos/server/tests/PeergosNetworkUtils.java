@@ -1855,6 +1855,72 @@ public class PeergosNetworkUtils {
         Assert.assertEquals(messages.size(), 6);
     }
 
+    public static void expandChat(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+
+        UserContext a = PeergosNetworkUtils.ensureSignedUp("a-" + generateUsername(random), password, network, crypto);
+        UserContext b = PeergosNetworkUtils.ensureSignedUp("b-" + generateUsername(random), password, network, crypto);
+        UserContext c = PeergosNetworkUtils.ensureSignedUp("c-" + generateUsername(random), password, network, crypto);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(a), Arrays.asList(b));
+        friendBetweenGroups(Arrays.asList(b), Arrays.asList(c));
+
+        Messenger msgA = new Messenger(a);
+        ChatController controllerA = msgA.createChat().join();
+        controllerA = msgA.invite(controllerA, Arrays.asList(b.username), Arrays.asList(b.signer.publicKeyHash)).join();
+
+        Pair<Messenger, ChatController> bInit = joinChat(b);
+        Messenger msgB = bInit.left;
+        ChatController controllerB = bInit.right;
+
+        controllerA = msgA.mergeAllUpdates(controllerA, a.getSocialState().join()).join();
+
+        ApplicationMessage msg1 = ApplicationMessage.text("G'day mate!");
+        controllerA = msgA.sendMessage(controllerA, msg1).join();
+
+        controllerB = msgB.mergeAllUpdates(controllerB, b.getSocialState().join()).join();
+        List<MessageEnvelope> messages = controllerB.getMessages(0, 10).join();
+        MessageEnvelope fromA = messages.get(messages.size() - 1);
+        Assert.assertEquals(fromA.payload, msg1);
+
+        controllerB = msgB.invite(controllerB, Arrays.asList(c.username), Arrays.asList(c.signer.publicKeyHash)).join();
+
+        Pair<Messenger, ChatController> cInit = joinChat(c);
+        Messenger msgC = cInit.left;
+        ChatController controllerC = cInit.right;
+
+        controllerB = msgB.mergeAllUpdates(controllerB, b.getSocialState().join()).join();
+        ApplicationMessage msg2 = ApplicationMessage.text("Hello world!");
+        controllerB = msgB.sendMessage(controllerB, msg2).join();
+
+        controllerC = msgC.mergeAllUpdates(controllerC, c.getSocialState().join()).join();
+        Assert.assertEquals(controllerC.getMemberNames().size(), 3);
+        messages = controllerC.getMessages(0, 10).join();
+        MessageEnvelope fromB = messages.get(messages.size() - 1);
+        Assert.assertEquals(fromB.payload, msg2);
+
+        ApplicationMessage msg3 = ApplicationMessage.text("Reply from C!");
+        controllerC = msgC.sendMessage(controllerC, msg3).join();
+
+        controllerB = msgB.mergeAllUpdates(controllerB, b.getSocialState().join()).join();
+        Assert.assertEquals(controllerB.getMemberNames().size(), 3);
+        messages = controllerB.getMessages(0, 10).join();
+        MessageEnvelope fromC = messages.get(messages.size() - 1);
+        Assert.assertEquals(fromC.payload, msg3);
+
+
+        controllerA = msgA.mergeAllUpdates(controllerA, a.getSocialState().join()).join();
+        Assert.assertEquals(controllerA.getMemberNames().size(), 3);
+
+        messages = controllerA.getMessages(0, 10).join();
+        fromC = messages.get(messages.size() - 1);
+        Assert.assertEquals(fromC.payload, msg3);
+
+    }
+
     public static void groupSharing(NetworkAccess network, Random random) {
         CryptreeNode.setMaxChildLinkPerBlob(10);
 
